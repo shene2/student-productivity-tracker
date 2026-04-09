@@ -5,13 +5,65 @@ const supabase = createClient(
   "sb_publishable_U-5BoDfSIl5mavfvxocjNg_gbjPgnYu"
 );
 
+// ================= AUTH =================
 
+async function signUp() {
+  const email = document.getElementById("email").value;
+  const password = document.getElementById("password").value;
+
+  const { error } = await supabase.auth.signUp({ email, password });
+
+  if (error) {
+    alert(error.message);
+  } else {
+    alert("Check your email to confirm your account!");
+  }
+}
+
+async function login() {
+  const email = document.getElementById("email").value;
+  const password = document.getElementById("password").value;
+
+  const { error } = await supabase.auth.signInWithPassword({
+    email,
+    password
+  });
+
+  if (error) {
+    alert(error.message);
+  } else {
+    document.getElementById("auth").style.display = "none";
+    document.getElementById("app").style.display = "block";
+    loadTasks();
+  }
+}
+
+// ================= CHECK USER =================
+
+async function checkUser() {
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (user) {
+    document.getElementById("auth").style.display = "none";
+    document.getElementById("app").style.display = "block";
+    loadTasks();
+  }
+}
+
+checkUser();
+
+// ================= TASKS =================
 
 async function addTask() {
   const text = document.getElementById("taskInput").value;
   const date = document.getElementById("dateInput").value;
 
-  const user = (await supabase.auth.getUser()).data.user;
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    alert("Please login first");
+    return;
+  }
 
   const { error } = await supabase.from("tasks").insert([
     {
@@ -25,17 +77,22 @@ async function addTask() {
   if (error) {
     alert(error.message);
   } else {
+    document.getElementById("taskInput").value = "";
+    document.getElementById("dateInput").value = "";
     loadTasks();
   }
 }
 
 async function loadTasks() {
-  const user = (await supabase.auth.getUser()).data.user;
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) return;
 
   const { data, error } = await supabase
     .from("tasks")
     .select("*")
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .order("date", { ascending: true });
 
   if (error) {
     alert(error.message);
@@ -44,6 +101,8 @@ async function loadTasks() {
 
   renderTasks(data);
 }
+
+// ================= RENDER =================
 
 function renderTasks(tasks) {
   const list = document.getElementById("taskList");
@@ -54,7 +113,11 @@ function renderTasks(tasks) {
 
     li.innerHTML = `
       <div class="task-top">
-        <span>${task.text}</span>
+        <span 
+          onclick="toggleDone('${task.id}', ${task.done})"
+          style="cursor:pointer; ${task.done ? 'text-decoration: line-through; opacity:0.6;' : ''}">
+          ${task.text}
+        </span>
         <button onclick="deleteTask('${task.id}')">X</button>
       </div>
       <span class="date">${task.date || "No deadline"}</span>
@@ -62,38 +125,34 @@ function renderTasks(tasks) {
 
     list.appendChild(li);
   });
+
+  updateProgress(tasks);
 }
 
+// ================= ACTIONS =================
 
 async function deleteTask(id) {
   await supabase.from("tasks").delete().eq("id", id);
   loadTasks();
 }
 
+async function toggleDone(id, currentStatus) {
+  await supabase
+    .from("tasks")
+    .update({ done: !currentStatus })
+    .eq("id", id);
 
-async function signUp() {
-  const email = document.getElementById("email").value;
-  const password = document.getElementById("password").value;
-
-  const { error } = await supabase.auth.signUp({ email, password });
-
-  if (error) alert(error.message);
-  else alert("Check your email!");
+  loadTasks();
 }
 
-async function login() {
-  const email = document.getElementById("email").value;
-  const password = document.getElementById("password").value;
+// ================= PROGRESS =================
 
-  const { error } = await supabase.auth.signInWithPassword({
-    email,
-    password
-  });
+function updateProgress(tasks) {
+  const total = tasks.length;
+  const done = tasks.filter(t => t.done).length;
 
-  if (error) alert(error.message);
-  else {
-    document.getElementById("auth").style.display = "none";
-    document.getElementById("app").style.display = "block";
-    loadTasks();
-  }
+  const percent = total === 0 ? 0 : Math.round((done / total) * 100);
+
+  document.getElementById("progressText").innerText =
+    `${percent}% completed (${done}/${total})`;
 }
