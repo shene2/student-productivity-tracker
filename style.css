@@ -1,0 +1,30 @@
+body {
+  font-family: Arial;
+  background: #121212;
+  color: white;
+  display: flex;
+  justify-content: center;
+  margin-top: 50px;
+}
+
+.container {
+  width: 300px;
+}
+
+input {
+  width: 70%;
+  padding: 8px;
+}
+
+button {
+  padding: 8px;
+  background: #00c896;
+  border: none;
+  color: white;
+}
+
+li {
+  margin-top: 10px;
+  display: flex;
+  justify-content: space-between;
+}
