@@ -1,68 +1,99 @@
-let tasks = JSON.parse(localStorage.getItem("tasks")) || [];
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
 
-function saveTasks() {
-  localStorage.setItem("tasks", JSON.stringify(tasks));
-}
+const supabase = createClient(
+  "https://mjfkgmcgkqwgckzqzufa.supabase.co",
+  "sb_publishable_U-5BoDfSIl5mavfvxocjNg_gbjPgnYu"
+);
 
-function addTask() {
+
+
+async function addTask() {
   const text = document.getElementById("taskInput").value;
   const date = document.getElementById("dateInput").value;
 
-  if (!text) return;
+  const user = (await supabase.auth.getUser()).data.user;
 
-  tasks.push({
-    text,
-    date,
-    done: false
-  });
+  const { error } = await supabase.from("tasks").insert([
+    {
+      text,
+      date,
+      done: false,
+      user_id: user.id
+    }
+  ]);
 
-  saveTasks();
-  renderTasks();
+  if (error) {
+    alert(error.message);
+  } else {
+    loadTasks();
+  }
 }
 
-function renderTasks() {
+async function loadTasks() {
+  const user = (await supabase.auth.getUser()).data.user;
+
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("*")
+    .eq("user_id", user.id);
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  renderTasks(data);
+}
+
+function renderTasks(tasks) {
   const list = document.getElementById("taskList");
   list.innerHTML = "";
 
-  tasks.forEach((task, index) => {
+  tasks.forEach(task => {
     const li = document.createElement("li");
 
     li.innerHTML = `
       <div class="task-top">
-        <span onclick="toggleDone(${index})" class="${task.done ? 'done' : ''}">
-          ${task.text}
-        </span>
-        <button onclick="deleteTask(${index})">X</button>
+        <span>${task.text}</span>
+        <button onclick="deleteTask('${task.id}')">X</button>
       </div>
       <span class="date">${task.date || "No deadline"}</span>
     `;
 
     list.appendChild(li);
   });
-
-  updateProgress();
 }
 
-function deleteTask(index) {
-  tasks.splice(index, 1);
-  saveTasks();
-  renderTasks();
+
+async function deleteTask(id) {
+  await supabase.from("tasks").delete().eq("id", id);
+  loadTasks();
 }
 
-function toggleDone(index) {
-  tasks[index].done = !tasks[index].done;
-  saveTasks();
-  renderTasks();
+
+async function signUp() {
+  const email = document.getElementById("email").value;
+  const password = document.getElementById("password").value;
+
+  const { error } = await supabase.auth.signUp({ email, password });
+
+  if (error) alert(error.message);
+  else alert("Check your email!");
 }
 
-function updateProgress() {
-  const total = tasks.length;
-  const done = tasks.filter(t => t.done).length;
+async function login() {
+  const email = document.getElementById("email").value;
+  const password = document.getElementById("password").value;
 
-  const percent = total === 0 ? 0 : Math.round((done / total) * 100);
+  const { error } = await supabase.auth.signInWithPassword({
+    email,
+    password
+  });
 
-  document.getElementById("progressText").innerText =
-    `${percent}% completed (${done}/${total})`;
+  if (error) alert(error.message);
+  else {
+    document.getElementById("auth").style.display = "none";
+    document.getElementById("app").style.display = "block";
+    loadTasks();
+  }
 }
-
-renderTasks();
