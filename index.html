@@ -1,20 +1,27 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Productivity Tracker</title>
+  <title>Smart Productivity Tracker</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-  <div class="container">
-    <h1>📚 Productivity Tracker</h1>
+<div class="container">
+  <h1>Smart Productivity Tracker</h1>
 
+  <div class="input-group">
     <input type="text" id="taskInput" placeholder="Enter task...">
+    <input type="date" id="dateInput">
     <button onclick="addTask()">Add</button>
-
-    <ul id="taskList"></ul>
   </div>
 
-  <script src="script.js"></script>
+  <div class="progress">
+    <p id="progressText">0% completed</p>
+  </div>
+
+  <ul id="taskList"></ul>
+</div>
+
+<script src="script.js"></script>
 </body>
 </html>
