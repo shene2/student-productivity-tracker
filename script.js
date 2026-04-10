@@ -156,3 +156,9 @@ function updateProgress(tasks) {
   document.getElementById("progressText").innerText =
     `${percent}% completed (${done}/${total})`;
 }
+
+window.signUp = signUp;
+window.login = login;
+window.addTask = addTask;
+window.deleteTask = deleteTask;
+window.toggleDone = toggleDone;
