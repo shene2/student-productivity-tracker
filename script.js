@@ -5,87 +5,114 @@ const supabase = createClient(
   "sb_publishable_U-5BoDfSIl5mavfvxocjNg_gbjPgnYu"
 );
 
-// ================= AUTH =================
+// ════════════════════════════════════════
+//  STATE
+// ════════════════════════════════════════
+let allTasks     = [];
+let activeFilter = "all";
+let authMode     = "login";
 
-async function signUp() {
-  const email = document.getElementById("email").value;
-  const password = document.getElementById("password").value;
-
-  const { error } = await supabase.auth.signUp({ email, password });
-
-  if (error) {
-    alert(error.message);
-  } else {
-    alert("Check your email to confirm your account!");
-  }
-}
-
-async function login() {
-  const email = document.getElementById("email").value;
-  const password = document.getElementById("password").value;
-
-  const { error } = await supabase.auth.signInWithPassword({
-    email,
-    password
-  });
-
-  if (error) {
-    alert(error.message);
-  } else {
-    document.getElementById("auth").style.display = "none";
-    document.getElementById("app").style.display = "block";
-    loadTasks();
-  }
-}
-
-// ================= CHECK USER =================
-
+// ════════════════════════════════════════
+//  INIT — check session on load
+// ════════════════════════════════════════
 async function checkUser() {
   const { data: { user } } = await supabase.auth.getUser();
-
   if (user) {
-    document.getElementById("auth").style.display = "none";
-    document.getElementById("app").style.display = "block";
-    loadTasks();
+    showApp(user);
+    await loadTasks();
   }
 }
-
 checkUser();
 
-// ================= TASKS =================
+// ════════════════════════════════════════
+//  AUTH
+// ════════════════════════════════════════
+function showApp(user) {
+  document.getElementById("auth").style.display = "none";
+  document.getElementById("app").style.display  = "block";
 
-async function addTask() {
-  const text = document.getElementById("taskInput").value;
-  const date = document.getElementById("dateInput").value;
+  const hour  = new Date().getHours();
+  const greet = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  document.getElementById("greeting").textContent = greet + " ✦";
 
-  const { data: { user } } = await supabase.auth.getUser();
+  document.getElementById("todayDate").textContent =
+    new Date().toLocaleDateString("en-US", { weekday:"short", month:"short", day:"numeric", year:"numeric" });
 
-  if (!user) {
-    alert("Please login first");
-    return;
-  }
-
-  const { error } = await supabase.from("tasks").insert([
-    {
-      text,
-      date,
-      done: false,
-      user_id: user.id
-    }
-  ]);
-
-  if (error) {
-    alert(error.message);
-  } else {
-    document.getElementById("taskInput").value = "";
-    document.getElementById("dateInput").value = "";
-    loadTasks();
-  }
+  const email = user?.email ?? "";
+  document.getElementById("userEmail").textContent  = email;
+  document.getElementById("userAvatar").textContent = email.charAt(0).toUpperCase() || "?";
 }
 
+window.switchTab = function(mode) {
+  authMode = mode;
+  document.getElementById("tabLogin").classList.toggle("active",  mode === "login");
+  document.getElementById("tabSignup").classList.toggle("active", mode === "signup");
+  document.getElementById("authBtnText").textContent = mode === "login" ? "Login" : "Create account";
+  document.getElementById("authSwitchText").textContent =
+    mode === "login" ? "Don't have an account?" : "Already have an account?";
+  const link = document.getElementById("authSwitchLink");
+  link.textContent = mode === "login" ? "Sign up free" : "Log in";
+  link.onclick = () => { switchTab(mode === "login" ? "signup" : "login"); return false; };
+  setError(""); setSuccess("");
+};
+
+window.handleAuth = function() {
+  if (authMode === "login") login(); else signUp();
+};
+
+async function signUp() {
+  const email    = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+  if (!email || !password) { setError("Please fill in all fields."); return; }
+  setLoading(true);
+  const { error } = await supabase.auth.signUp({ email, password });
+  setLoading(false);
+  if (error) setError(error.message);
+  else setSuccess("Account created! Check your email, or log in if email confirmation is disabled.");
+}
+window.signUp = signUp;
+
+async function login() {
+  const email    = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+  if (!email || !password) { setError("Please fill in all fields."); return; }
+  setLoading(true);
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  setLoading(false);
+  if (error) { setError(error.message); return; }
+  showApp(data.user);
+  await loadTasks();
+}
+window.login = login;
+
+window.logout = async function() {
+  await supabase.auth.signOut();
+  allTasks = [];
+  document.getElementById("auth").style.display = "flex";
+  document.getElementById("app").style.display  = "none";
+};
+
+function setError(msg) {
+  const el = document.getElementById("authError");
+  el.style.display = msg ? "block" : "none";
+  el.textContent   = msg;
+}
+function setSuccess(msg) {
+  const el = document.getElementById("authSuccess");
+  el.style.display = msg ? "block" : "none";
+  el.textContent   = msg;
+}
+function setLoading(on) {
+  document.getElementById("authBtnText").style.display   = on ? "none"   : "inline";
+  document.getElementById("authBtnLoader").style.display = on ? "inline" : "none";
+  document.getElementById("authBtn").disabled = on;
+}
+
+// ════════════════════════════════════════
+//  TASKS  (schema: text, date, done, user_id)
+// ════════════════════════════════════════
 async function loadTasks() {
   const { data: { user } } = await supabase.auth.getUser();
-
   if (!user) return;
 
   const { data, error } = await supabase
@@ -94,71 +121,193 @@ async function loadTasks() {
     .eq("user_id", user.id)
     .order("date", { ascending: true });
 
-  if (error) {
-    alert(error.message);
-    return;
-  }
-
-  renderTasks(data);
+  if (error) { console.error(error); return; }
+  allTasks = data || [];
+  renderTasks();
+  updateStats();
 }
 
-// ================= RENDER =================
+window.addTask = async function() {
+  const textEl = document.getElementById("taskInput");
+  const dateEl = document.getElementById("dateInput");
+  const text   = textEl.value.trim();
+  const date   = dateEl.value;
+  if (!text) { textEl.focus(); return; }
 
-function renderTasks(tasks) {
-  const list = document.getElementById("taskList");
-  list.innerHTML = "";
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
 
-  tasks.forEach(task => {
-    const li = document.createElement("li");
+  const { data, error } = await supabase
+    .from("tasks")
+    .insert([{ text, date: date || null, done: false, user_id: user.id }])
+    .select()
+    .single();
 
-    li.innerHTML = `
-      <div class="task-top">
-        <span 
-          onclick="toggleDone('${task.id}', ${task.done})"
-          style="cursor:pointer; ${task.done ? 'text-decoration: line-through; opacity:0.6;' : ''}">
-          ${task.text}
-        </span>
-        <button onclick="deleteTask('${task.id}')">X</button>
-      </div>
-      <span class="date">${task.date || "No deadline"}</span>
-    `;
+  if (error) { console.error(error); return; }
+  textEl.value = ""; dateEl.value = "";
+  allTasks.unshift(data);
+  renderTasks(); updateStats();
+};
 
-    list.appendChild(li);
-  });
+window.addTaskFromModal = async function() {
+  document.getElementById("taskInput").value = document.getElementById("modalTaskInput").value;
+  document.getElementById("dateInput").value = document.getElementById("modalDateInput").value;
+  closeModal();
+  await window.addTask();
+};
 
-  updateProgress(tasks);
-}
-
-// ================= ACTIONS =================
-
-async function deleteTask(id) {
+window.deleteTask = async function(id, e) {
+  if (e) e.stopPropagation();
   await supabase.from("tasks").delete().eq("id", id);
-  loadTasks();
-}
+  allTasks = allTasks.filter(t => t.id !== id);
+  renderTasks(); updateStats();
+};
 
-async function toggleDone(id, currentStatus) {
-  await supabase
+window.toggleDone = async function(id, currentStatus) {
+  const { error } = await supabase
     .from("tasks")
     .update({ done: !currentStatus })
     .eq("id", id);
+  if (error) { console.error(error); return; }
+  const task = allTasks.find(t => t.id === id);
+  if (task) task.done = !currentStatus;
+  renderTasks(); updateStats();
+};
 
-  loadTasks();
+// ════════════════════════════════════════
+//  RENDER
+// ════════════════════════════════════════
+function getFiltered() {
+  const today = new Date().toISOString().split("T")[0];
+  switch (activeFilter) {
+    case "pending": return allTasks.filter(t => !t.done);
+    case "done":    return allTasks.filter(t =>  t.done);
+    case "today":   return allTasks.filter(t => t.date === today);
+    default:        return allTasks;
+  }
 }
 
-// ================= PROGRESS =================
+function renderTasks() {
+  const list  = document.getElementById("taskList");
+  const empty = document.getElementById("emptyState");
+  list.querySelectorAll(".task-item").forEach(el => el.remove());
 
-function updateProgress(tasks) {
-  const total = tasks.length;
-  const done = tasks.filter(t => t.done).length;
+  const tasks = getFiltered();
+  if (tasks.length === 0) { empty.style.display = "block"; return; }
+  empty.style.display = "none";
 
-  const percent = total === 0 ? 0 : Math.round((done / total) * 100);
+  const today = new Date().toISOString().split("T")[0];
+  tasks.forEach(task => {
+    const li = document.createElement("li");
+    li.className = "task-item";
+    li.onclick = () => window.toggleDone(task.id, task.done);
 
-  document.getElementById("progressText").innerText =
-    `${percent}% completed (${done}/${total})`;
+    const isOverdue = task.date && task.date < today && !task.done;
+    const dateLabel = task.date
+      ? new Date(task.date + "T00:00:00").toLocaleDateString("en-US", { month:"short", day:"numeric" })
+      : "No deadline";
+
+    li.innerHTML = `
+      <div class="task-check ${task.done ? "done" : ""}">${task.done ? "✓" : ""}</div>
+      <div class="task-info">
+        <div class="task-name ${task.done ? "done" : ""}">${esc(task.text)}</div>
+        <div class="task-meta">
+          <span style="color:${isOverdue ? "#F87171" : ""};">${isOverdue ? "⚠ " : ""}${dateLabel}</span>
+        </div>
+      </div>
+      <button class="task-delete" onclick="deleteTask('${task.id}', event)">✕</button>
+    `;
+    list.appendChild(li);
+  });
 }
 
-window.signUp = signUp;
-window.login = login;
-window.addTask = addTask;
-window.deleteTask = deleteTask;
-window.toggleDone = toggleDone;
+function updateStats() {
+  const total    = allTasks.length;
+  const done     = allTasks.filter(t => t.done).length;
+  const pending  = total - done;
+  const today    = new Date().toISOString().split("T")[0];
+  const dueToday = allTasks.filter(t => t.date === today && !t.done).length;
+  const rate     = total > 0 ? Math.round((done / total) * 100) : 0;
+
+  document.getElementById("statTotal").textContent   = total;
+  document.getElementById("statDone").textContent    = done;
+  document.getElementById("statPending").textContent = pending;
+  document.getElementById("statToday").textContent   = dueToday;
+
+  document.getElementById("statDoneSub").textContent  = rate + "% rate";
+  document.getElementById("statDoneSub").className    = "stat-change" + (rate >= 50 ? " up" : "");
+  document.getElementById("statPendingSub").textContent = pending === 0 ? "All clear! 🎉" : "To do";
+  document.getElementById("statTodaySub").textContent   = dueToday > 0 ? "Due today" : "None today";
+
+  document.getElementById("progressFill").style.width = rate + "%";
+  document.getElementById("progressText").textContent  =
+    rate + "% completed (" + done + "/" + total + ")";
+  document.getElementById("pendingCount").textContent  = pending;
+
+  document.getElementById("taskSummary").textContent = total === 0
+    ? "No tasks yet — add your first one!"
+    : done + " of " + total + " tasks done · " + dueToday + " due today";
+}
+
+function esc(str) {
+  return String(str)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// ════════════════════════════════════════
+//  FILTER
+// ════════════════════════════════════════
+window.toggleFilter = function() {
+  const bar = document.getElementById("filterBar");
+  bar.style.display = bar.style.display === "none" ? "flex" : "none";
+};
+window.setFilter = function(filter, btn) {
+  activeFilter = filter;
+  document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  renderTasks();
+};
+
+// ════════════════════════════════════════
+//  MODAL
+// ════════════════════════════════════════
+window.openAddModal = function() {
+  document.getElementById("modalOverlay").style.display = "flex";
+};
+window.closeModal = function() {
+  document.getElementById("modalOverlay").style.display = "none";
+  document.getElementById("modalTaskInput").value = "";
+  document.getElementById("modalDateInput").value = "";
+};
+
+// ════════════════════════════════════════
+//  FOCUS TIMER
+// ════════════════════════════════════════
+let timerSecs = 25 * 60, timerOn = false, timerInterval = null;
+function fmt(s) {
+  return String(Math.floor(s/60)).padStart(2,"0") + ":" + String(s%60).padStart(2,"0");
+}
+window.toggleTimer = function() {
+  if (timerOn) {
+    clearInterval(timerInterval); timerOn = false;
+    document.getElementById("startBtn").textContent = "▶ Start";
+  } else {
+    timerOn = true;
+    document.getElementById("startBtn").textContent = "⏸ Pause";
+    timerInterval = setInterval(() => {
+      if (timerSecs > 0) {
+        timerSecs--;
+        document.getElementById("timerDisplay").textContent = fmt(timerSecs);
+      } else {
+        clearInterval(timerInterval); timerOn = false;
+        document.getElementById("startBtn").textContent = "▶ Start";
+      }
+    }, 1000);
+  }
+};
+window.resetTimer = function() {
+  clearInterval(timerInterval); timerOn = false; timerSecs = 25 * 60;
+  document.getElementById("timerDisplay").textContent = fmt(timerSecs);
+  document.getElementById("startBtn").textContent = "▶ Start";
+};
